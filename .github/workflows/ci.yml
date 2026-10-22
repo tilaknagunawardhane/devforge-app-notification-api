@@ -1,0 +1,46 @@
+name: Build and Push
+			on:
+			push:
+				branches: [ "main" ]
+
+			jobs:
+				build:
+					runs-on: ubuntu-latest
+					steps:
+						- name: Checkout app code
+							uses: actions/checkout@v3
+
+						- name: Login to Docker Hub
+							uses: docker/login-action@v2
+							with:
+							username: ${{ secrets.DOCKER_USERNAME }}
+							password: ${{ secrets.DOCKER_TOKEN }}
+
+						- name: Build and push Docker image
+							uses: docker/build-push-action@v4
+							with:
+							context: .
+							push: true
+							tags: ${{ secrets.DOCKER_USERNAME }}/notification-api:${{ github.sha }}
+
+						- name: Checkout Manifest Repo
+							uses: actions/checkout@v3
+							with:
+							# Clones the separate GitOps manifest repository
+							repository: ${{ github.repository_owner }}/devforge-manifests-notification-api
+										token: ${{ secrets.PAT_TOKEN }}
+										path: manifest-repo
+
+						- name: Update YAML image tag and Push
+							run: |
+								cd manifest-repo
+								# Use sed to find the old image line and replace it with the newly built Docker tag
+								sed -i 's|image: .*|image: ${{ secrets.DOCKER_USERNAME }}/notification-api:${{ github.sha }}|g' deployment.yaml
+			
+							# Commit the change back to the manifest repo
+							git config user.name "DevForge GitOps Bot"
+							git config user.email "bot@devforge.ai"
+							git add deployment.yaml
+							git commit -m "GitOps sync: Update image to ${{ github.sha }}"
+							git push
+						
